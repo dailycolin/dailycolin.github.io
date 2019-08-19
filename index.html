@@ -5,9 +5,149 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<link rel="profile" href="https://gmpg.org/xfn/11" />
 	<title>ascgfvhjnklb</title>
+
+<!-- Async WordPress.com Remote Login -->
+<script id="wpcom_remote_login_js">
+var wpcom_remote_login_extra_auth = '';
+function wpcom_remote_login_remove_dom_node_id( element_id ) {
+	var dom_node = document.getElementById( element_id );
+	if ( dom_node ) { dom_node.remove(); }
+}
+function wpcom_remote_login_remove_dom_node_classes( class_name ) {
+	var dom_nodes = document.querySelectorAll( '.' + class_name );
+	for ( var i = 0; i < dom_nodes.length; i++ ) {
+		dom_nodes[i].remove();
+	}
+}
+function wpcom_remote_login_final_cleanup() {
+	wpcom_remote_login_remove_dom_node_classes( "wpcom_remote_login_msg" );
+	wpcom_remote_login_remove_dom_node_id( "wpcom_remote_login_key" );
+	wpcom_remote_login_remove_dom_node_id( "wpcom_remote_login_validate" );
+	wpcom_remote_login_remove_dom_node_id( "wpcom_remote_login_js" );
+	wpcom_remote_login_remove_dom_node_id( "wpcom_request_access_iframe" );
+	wpcom_remote_login_remove_dom_node_id( "wpcom_request_access_styles" );
+}
+
+// Watch for messages back from the remote login
+window.addEventListener( "message", function( e ) {
+	if ( e.origin === "https://r-login.wordpress.com" ) {
+		var data = {};
+		try {
+			data = JSON.parse( e.data );
+		} catch( e ) {
+			wpcom_remote_login_final_cleanup();
+			return;
+		}
+
+		if ( data.msg === 'LOGIN' ) {
+			// Clean up the login check iframe
+			wpcom_remote_login_remove_dom_node_id( "wpcom_remote_login_key" );
+
+			var id_regex = new RegExp( /^[0-9]+$/ );
+			var token_regex = new RegExp( /^.*|.*|.*$/ );
+			if (
+				token_regex.test( data.token )
+				&& id_regex.test( data.wpcomid )
+			) {
+				// We have everything we need to ask for a login
+				var script = document.createElement( "script" );
+				script.setAttribute( "id", "wpcom_remote_login_validate" );
+				script.src = '/remote-login.php?wpcom_remote_login=validate'
+					+ '&wpcomid=' + data.wpcomid
+					+ '&token=' + encodeURIComponent( data.token )
+					+ '&host=' + window.location.protocol
+						+ '//' + window.location.hostname;
+				document.body.appendChild( script );
+			}
+
+			return;
+		}
+
+		// Safari ITP, not logged in, so redirect
+		if ( data.msg === 'LOGIN-REDIRECT' ) {
+			window.location = 'https://wordpress.com/log-in?redirect_to=' + window.location.href;
+			return;
+		}
+
+		// Safari ITP, storage access failed, remove the request
+		if ( data.msg === 'LOGIN-REMOVE' ) {
+			var css_zap = 'html { -webkit-transition: margin-top 1s; transition: margin-top 1s; } /* 9001 */ html { margin-top: 0 !important; } * html body { margin-top: 0 !important; } @media screen and ( max-width: 782px ) { html { margin-top: 0 !important; } * html body { margin-top: 0 !important; } }';
+			var style_zap = document.createElement( 'style' );
+			style_zap.type = 'text/css';
+			style_zap.appendChild( document.createTextNode( css_zap ) );
+			document.body.appendChild( style_zap );
+
+			var e = document.getElementById( 'wpcom_request_access_iframe' );
+			e.parentNode.removeChild( e );
+
+			document.cookie = 'wordpress_com_login_access=denied; path=/; max-age=31536000';
+
+			return;
+		}
+
+		// Safari ITP
+		if ( data.msg === 'REQUEST_ACCESS' ) {
+			console.log( 'request access: safari' );
+
+			// Check ITP iframe enable/disable knob
+			if ( wpcom_remote_login_extra_auth !== 'safari_itp_iframe' ) {
+				return;
+			}
+
+			// If we are in a "private window" there is no ITP.
+			var private_window = false;
+			try {
+				var opendb = window.openDatabase( null, null, null, null );
+			} catch( e ) {
+				private_window = true;
+			}
+
+			if ( private_window ) {
+				console.log( 'private window' );
+				return;
+			}
+
+			var iframe = document.createElement( 'iframe' );
+			iframe.id = 'wpcom_request_access_iframe';
+			iframe.setAttribute( 'scrolling', 'no' );
+			iframe.setAttribute( 'sandbox', 'allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-top-navigation-by-user-activation' );
+			iframe.src = 'https://r-login.wordpress.com/remote-login.php?wpcom_remote_login=request_access&origin=' + encodeURIComponent( data.origin ) + '&wpcomid=' + encodeURIComponent( data.wpcomid );
+
+			var css = 'html { -webkit-transition: margin-top 1s; transition: margin-top 1s; } /* 9001 */ html { margin-top: 46px !important; } * html body { margin-top: 46px !important; } @media screen and ( max-width: 660px ) { html { margin-top: 71px !important; } * html body { margin-top: 71px !important; } #wpcom_request_access_iframe { display: block; height: 71px !important; } } #wpcom_request_access_iframe { border: 0px; height: 46px; position: fixed; top: 0; left: 0; width: 100%; min-width: 100%; z-index: 99999; background: #23282d; } ';
+
+			var style = document.createElement( 'style' );
+			style.type = 'text/css';
+			style.id = 'wpcom_request_access_styles';
+			style.appendChild( document.createTextNode( css ) );
+			document.body.appendChild( style );
+
+			document.body.appendChild( iframe );
+		}
+
+		if ( data.msg === 'DONE' ) {
+			wpcom_remote_login_final_cleanup();
+		}
+	}
+}, false );
+
+// Inject the remote login iframe after the page has had a chance to load
+// more critical resources
+window.addEventListener( "DOMContentLoaded", function( e ) {
+	var iframe = document.createElement( "iframe" );
+	iframe.style.display = "none";
+	iframe.setAttribute( "scrolling", "no" );
+	iframe.setAttribute( "id", "wpcom_remote_login_key" );
+	iframe.src = "https://r-login.wordpress.com/remote-login.php"
+		+ "?wpcom_remote_login=key"
+		+ "&origin=aHR0cHM6Ly9qZWZmMTAuaG9tZS5ibG9n"
+		+ "&wpcomid=165743166"
+		+ "&time=1566238735";
+	document.body.appendChild( iframe );
+}, false );
+</script>
 <link rel='dns-prefetch' href='//s2.wp.com' />
-<link rel='dns-prefetch' href='//jeff10home.wordpress.com' />
 <link rel='dns-prefetch' href='//s1.wp.com' />
+<link rel='dns-prefetch' href='//jeff10home.wordpress.com' />
 <link rel='dns-prefetch' href='//s0.wp.com' />
 <link rel='dns-prefetch' href='//wordpress.com' />
 <link rel='dns-prefetch' href='//fonts.googleapis.com' />
@@ -46,39 +186,18 @@ img.emoji {
 	padding: 0 !important;
 }
 </style>
-	<link rel='stylesheet' id='all-css-0-1' href='https://s0.wp.com/_static/??-eJydU+1ShDAMfCFLj9Nj9Ifjs9CSgx79mqYVeXsD5ZjxTqvjH6ZJd5NNuvDJM+lsBBu5Sczr1CuLfPLSGYZGaZhvokoiPvDvaZgEyqB8VI6is9PaTSX84N4hMJGE0EDsOGvY4cpKnTpKU4J3LQ6KCmBllL2HXJBHuh+F+9gPpb7SBWBxAANI18a3kceJMLNVFiKALZG1GpeWEH0rR7ZGd/Artk8UCgg9W1rypjpWBy6S0h0X2q10Edow38z+7zLrTH8os7JoacqOywPkKBcsK5FuA9dVvYjoFMasAavMXKv8yD8nrRmqCAw6Re37ba38UDVVzb3DiDQNxiwq17/Nll6n7cghTLRhc+0eZ5Li1sXVSfvhV6NsDiGEIdEtaNqxjSWa8c2VtRyHdllPAZ+lCuEDIDL6GpXMZtCyPLNIySZcf5QvmYX6Zl7rU3N6rp9ejo+XTxQGeGE=?cssminify=yes' type='text/css' media='all' />
-<style id='wpcom-admin-bar-inline-css' type='text/css'>
-
-			.admin-bar {
-				position: inherit !important;
-				top: auto !important;
-			}
-			.admin-bar .goog-te-banner-frame {
-				top: 32px !important
-			}
-			@media screen and (max-width: 782px) {
-				.admin-bar .goog-te-banner-frame {
-					top: 46px !important;
-				}
-			}
-			@media screen and (max-width: 480px) {
-				.admin-bar .goog-te-banner-frame {
-					position: absolute;
-				}
-			}
-		
-</style>
+	<link rel='stylesheet' id='all-css-0-1' href='https://s1.wp.com/_static/??-eJylkttOwzAMhl+IxCuwCi4Qz5J0psuak2JXU9+eHLZpB1GQuIli+/98SAzHKIbgGT2Dm0W082g8wTEOwQlyxuJyZ8mB6AmuMG3DeAGdShOy8aPQKkGW3noe4KuaQ0goeI8OKYddVAx8zJrFG4+M6NdgayYkOCBHNUyiWg/ys3acs6kxjaKUhF4+yw3o2dhdmaXiOqm0APFi8f9p6kx/SFMpgvxWE6az1RKudzKEk7iTXWliZ4hbDyQbWbP8yH/N1goyjAJ3pn5Vi8BG9rKDGIgpT0Pcmmr5772/fu3pT7PC5TIKbX4Vz2uYi/2ZKte9KgOt6Nueah0TEol8OjO700qtt+dKK21t6tLeeBpqwAc2mabLpQQ+3Ue37bdv3ev788vhG8CbO78=?cssminify=yes' type='text/css' media='all' />
 <link rel='stylesheet' id='calm_business-fonts-css'  href='https://fonts.googleapis.com/css?family=Poppins%3A400%2C400i%2C600%2C600i%2C700%2C700i&#038;subset=latin%2Clatin-ext' type='text/css' media='all' />
 <link rel='stylesheet' id='all-css-2-1' href='https://s2.wp.com/_static/??-eJyNy1EKgCAQBcALZZuC9RWdRZeFMjXhrUS3j27Q/wzdzfBVVaqS7lIE1HokDrmY2HFUAQj6ZDFJtAU+RwYG+t0+vpXV+tk765fJpRfXUynb?cssminify=yes' type='text/css' media='all' />
 <link rel='stylesheet' id='print-css-3-1' href='https://s2.wp.com/wp-content/themes/pub/twentynineteen/print.css?m=1551232311h&cssminify=yes' type='text/css' media='print' />
-<link rel='stylesheet' id='all-css-4-1' href='https://s0.wp.com/_static/??-eJx9kV1uAyEMhC9U102VRMpD1LOwrENowEbgDcrtC1W0yo/Em8fMfIwAawIrrMSKeqZIBdMyoda2uLFnUiJGzxaL3gJBTVbipy3lAx+ScYEUFue5YPWzIy1ISzuViycIpqJSTMFoo/9jRgBHAkGsUS/8JOAUjM+jKEu/wczRM0wmw/V75M40BXFtdNhcD3IUUimQKUlWOEmOr3oUXXthNEUp94ZypZz93FqvuyHC9ofoiHV6s99/8bxFF2QyoRt+4nGz239t94fNYff7B+J8u68=?cssminify=yes' type='text/css' media='all' />
-<script type='text/javascript' src='https://s1.wp.com/_static/??-eJx9kFEKwjAMQC9kV2R0+COeZavZyGzT2qQbenr7MRFHFQIh5JHkRa9RIVmXr8B6LnHPkB5bamY+6H+A8jilXqDxSG/YBhIg0T6r6PKExJrzwDZhFAylGoNzYd3jZXQMLB6Y+wkqXR8GdKAyQyoASblqDBXu2wBpQagt24mCxN7eVALGJ9S8OX4Ufz9soy7+fDTm1JquM+38AkldhUA='></script>
+<link rel='stylesheet' id='all-css-4-1' href='https://s2.wp.com/_static/??-eJx9kdFuwyAMRX+o1KvURsrDtG9xmEdoDUaxI5S/H1krtdUknuwL91yDDLU4L9koG9hMiRTKOoHVdrDlmMmIMsTsQW1jcrV4SUeveoAXMq2u8BpiVqjxO5Ap0Npu5RbJMVYwSoXRWvpfTC8gkDgWjxYlvwn3wxiXHrrQxBJaG6C5XmQPQr+HT7g8u569iNr9JaAzLvusR+1RKj4it68EeRf/oMcS5jMElgl5N3ylz9Nl+DgP42m8XH8BL7ijSw==?cssminify=yes' type='text/css' media='all' />
+<script type='text/javascript' src='https://s2.wp.com/_static/??-eJyFztEKwjAMBdAfsisyOnwRv6XWOFKXtDbphn69HeiDMBQC9+EeuLFLNshhqhcQG9vdK5THO7ooO/sLGMKxeIWOkD84JFZgXW1OogQifoSNltIZJzBVoDTA2mauacN9v4Q8Iyx/WQTNPtxMAcHnun6i4965Q++GwfXxBTkPW9k='></script>
 <link rel="EditURI" type="application/rsd+xml" title="RSD" href="https://jeff10home.wordpress.com/xmlrpc.php?rsd" />
 <link rel="wlwmanifest" type="application/wlwmanifest+xml" href="https://s1.wp.com/wp-includes/wlwmanifest.xml" /> 
 <meta name="generator" content="WordPress.com" />
 <link rel="canonical" href="https://jeff10.home.blog/" />
 <link rel='shortlink' href='https://wp.me/PbdrmS-4' />
-
+<link rel="alternate" type="application/json+oembed" href="https://public-api.wordpress.com/oembed/?format=json&amp;url=https%3A%2F%2Fjeff10.home.blog%2F&amp;for=wpcom-auto-discovery" /><link rel="alternate" type="application/xml+oembed" href="https://public-api.wordpress.com/oembed/?format=xml&amp;url=https%3A%2F%2Fjeff10.home.blog%2F&amp;for=wpcom-auto-discovery" />
 <!-- Jetpack Open Graph Tags -->
 <meta property="og:type" content="website" />
 <meta property="og:title" content="ascgfvhjnklb" />
@@ -98,70 +217,10 @@ img.emoji {
 <link rel="apple-touch-icon-precomposed" href="https://s2.wp.com/i/webclip.png" />
 <link rel="search" type="application/opensearchdescription+xml" href="https://jeff10.home.blog/osd.xml" title="ascgfvhjnklb" />
 <link rel="search" type="application/opensearchdescription+xml" href="https://s1.wp.com/opensearch.xml" title="WordPress.com" />
-<meta name="pinterest" content="nopin" /><meta name="application-name" content="ascgfvhjnklb" /><meta name="msapplication-window" content="width=device-width;height=device-height" /><meta name="msapplication-tooltip" content="Author posts, manage comments, and manage ascgfvhjnklb." /><meta name="msapplication-task" content="name=Edit page;action-uri=https://wordpress.com/page/jeff10.home.blog/4;icon-uri=https://s1.wp.com/i/icons/page.ico" /><meta name="msapplication-task" content="name=Write a post;action-uri=https://wordpress.com/post/jeff10.home.blog;icon-uri=https://s2.wp.com/i/icons/post.ico" /><meta name="msapplication-task" content="name=Moderate comments;action-uri=https://jeff10home.wordpress.com/wp-admin/edit-comments.php?comment_status=moderated;icon-uri=https://s2.wp.com/i/icons/comment.ico" /><meta name="msapplication-task" content="name=Upload new media;action-uri=https://jeff10home.wordpress.com/wp-admin/media-new.php;icon-uri=https://s2.wp.com/i/icons/media.ico" /><meta name="msapplication-task" content="name=Blog stats;action-uri=https://jeff10home.wordpress.com/wp-admin/index.php?page=stats;icon-uri=https://s1.wp.com/i/icons/stats.ico" /><meta name="description" content="Welcome to my bloggeroni Subscribe or else I will take your social security number" />
-<style type="text/css" media="print">#wpadminbar { display:none; }</style>
-	<style type="text/css" media="screen">
-	html { margin-top: 32px !important; }
-	* html body { margin-top: 32px !important; }
-	@media screen and ( max-width: 782px ) {
-		html { margin-top: 46px !important; }
-		* html body { margin-top: 46px !important; }
-	}
-</style>
-			<div class="launch-banner" id="launch-banner">
-			<div class="launch-banner-content">
-				<img src="/wp-content/blog-plugins/launch-banner/launch-img.svg" class="launch-banner-image" width="170" />
-				<div class="launch-banner-text">
-					Your site hasn't been launched yet. Before launching, verify your email address by opening the email we sent to (tedcruz@bigboymeatmarket.com). 							<button class="text-button" id="resend-verifyemail" data-nonce="fde49e3767">Resend Verification Email</button>
-									</div>
-				<div class="launch-banner-button">
-						<button class="dismiss-button" onclick="javascript:document.getElementById('launch-banner').style.display='none'">Dismiss</button>
-													<input type="submit" class="launch-site-button disabled" value="Launch site" />
-									</div>
-			</div>
-		</div>
-				<script>(function(){
-			var el = document.querySelector('.launch-banner');
-			if ( ! el ) {
-				return;
-			}
-			el.style.display = 'none';
-			document.addEventListener('DOMContentLoaded', function() {
-				var el = document.querySelector('.launch-banner');
-				if ( el ) {
-					el.style.display = null;
-				}
-			} );
-		})()</script>
-			<script>
-			jQuery( '#resend-verifyemail' ).on( 'click', function(e) {
-				var link = jQuery(e.target);
+<meta name="application-name" content="ascgfvhjnklb" /><meta name="msapplication-window" content="width=device-width;height=device-height" /><meta name="msapplication-task" content="name=Subscribe;action-uri=https://jeff10.home.blog/feed/;icon-uri=https://s1.wp.com/i/favicon.ico" /><meta name="msapplication-task" content="name=Sign up for a free blog;action-uri=http://wordpress.com/signup/;icon-uri=https://s1.wp.com/i/favicon.ico" /><meta name="msapplication-task" content="name=WordPress.com Support;action-uri=http://support.wordpress.com/;icon-uri=https://s1.wp.com/i/favicon.ico" /><meta name="msapplication-task" content="name=WordPress.com Forums;action-uri=http://forums.wordpress.com/;icon-uri=https://s1.wp.com/i/favicon.ico" /><meta name="description" content="Welcome to my bloggeroni Subscribe or else I will take your social security number" />
+</head>
 
-				e.preventDefault();
-
-				var r = jQuery.ajax( {
-					type: 'POST',
-					url: '/wp-admin/admin-ajax.php',
-					data: {
-						'action': 'resend_verify_email',
-						'_wpnonce': link.data( 'nonce' )
-					}
-				} );
-
-				setTimeout( function() {
-					link.hide();
-					link.after( '<strong id="email-sent">Email Sent</strong>' );
-				}, 200 );
-
-				setTimeout( function() {
-					jQuery( "strong#email-sent" ).hide().remove();
-					link.show();
-				}, 4000 );
-			} );
-		</script>
-	</head>
-
-<body class="home page-template-default page page-id-4 logged-in admin-bar no-customize-support wp-embed-responsive mp6 customizer-styles-applied singular image-filters-enabled hide-homepage-title highlander-enabled highlander-light">
+<body class="home page-template-default page page-id-4 wp-embed-responsive mp6 customizer-styles-applied singular image-filters-enabled hide-homepage-title admin-bar highlander-enabled highlander-light">
 <div id="page" class="site">
 	<a class="skip-link screen-reader-text" href="#content">Skip to content</a>
 
@@ -214,10 +273,6 @@ img.emoji {
 	<div class="a8c-posts-list-item__meta">
 		<span class="a8c-posts-list-item__datetime">August 19, 2019</span>
 		<span class="a8c-posts-list-item__author">by			<a href="https://jeff10.home.blog/author/jeffereytennison/" title="Posts by jeffereytennison" rel="author">jeffereytennison</a>		</span>
-			
-			<span class="a8c-posts-list-item__edit-link">
-				<a href="https://wordpress.com/post/jeff10.home.blog/3">Edit</a>
-			</span>
 			</div>
 
 	<div class="a8c-posts-list-item__excerpt">
@@ -234,10 +289,6 @@ img.emoji {
 	<div class="a8c-posts-list-item__meta">
 		<span class="a8c-posts-list-item__datetime">August 19, 2019</span>
 		<span class="a8c-posts-list-item__author">by			<a href="https://jeff10.home.blog/author/jeffereytennison/" title="Posts by jeffereytennison" rel="author">jeffereytennison</a>		</span>
-			
-			<span class="a8c-posts-list-item__edit-link">
-				<a href="https://wordpress.com/post/jeff10.home.blog/17">Edit</a>
-			</span>
 			</div>
 
 	<div class="a8c-posts-list-item__excerpt">
@@ -271,14 +322,17 @@ img.emoji {
 
 <div class="wp-block-jetpack-subscriptions"><div class="jetpack_subscription_widget">            <form action="https://subscribe.wordpress.com" method="post" accept-charset="utf-8"
                   id="subscribe-blog">
-													
+									                    <p><input type="text" name="email" style="width: 95%; padding: 1px 2px"
+                              placeholder="Enter your email address" value=""
+                              id="subscribe-field"/></p>
+				
                 <p>
                     <input type="hidden" name="action" value="subscribe"/>
                     <input type="hidden" name="blog_id" value="165743166"/>
                     <input type="hidden" name="source" value="https://jeff10.home.blog/"/>
                     <input type="hidden" name="sub-type" value="widget"/>
-                    <input type="hidden" name="redirect_fragment" value="503"/>
-					<input type="hidden" id="_wpnonce" name="_wpnonce" value="5e2d75ec70" />                    <button type="submit"
+                    <input type="hidden" name="redirect_fragment" value="545"/>
+					<input type="hidden" id="_wpnonce" name="_wpnonce" value="68aabf0bb0" />                    <button type="submit"
 	                    	                        class="undefined"
 	                    		                			                style="background-color: undefined; color: undefined;"
 		                	                >
@@ -289,8 +343,6 @@ img.emoji {
 </div></div>
 	</div><!-- .entry-content -->
 
-			<footer class="entry-footer">
-			<span class="edit-link"><a class="post-edit-link" href="https://wordpress.com/page/jeff10.home.blog/4">Edit <span class="screen-reader-text">Home</span></a></span>		</footer><!-- .entry-footer -->
 	</article><!-- #post-4 -->
 
 		</main><!-- #main -->
@@ -309,76 +361,10 @@ img.emoji {
 </div><!-- #page -->
 
 <!--  -->
-	<script type="text/javascript">
-	/* <![CDATA[ */
-		jQuery(document).ready( function($) {
-			function doFollowingHover() {
-				$('#wp-admin-bar-follow > a').unbind( '.unfollow' );
-
-				$('#wp-admin-bar-follow > a').bind( 'mouseover.unfollow', function() {
-
-					$(this).html( "Unfollow" ).parent( 'li' ).addClass( 'unfollow' );
-				});
-				$('#wp-admin-bar-follow > a').bind( 'mouseout.unfollow', function() {
-					$(this).html( "Following" ).parent( 'li' ).removeClass( 'unfollow' );
-				});
-			}
-			
-			$('#wp-admin-bar-follow > a').click( function( e ) {
-				$('#wp-admin-bar-follow > a').unbind( '.unfollow' );
-
-				e.preventDefault();
-
-				var link = $( this ), li = $( '#wp-admin-bar-follow' ), timeout = 0;
-
-				if ( li.hasClass( 'subscribed' ) ) {
-					li.removeClass( 'subscribed' ).removeClass( 'unfollow' );
-					link.html( "Follow" );
-
-					$('body').append( $( 'div.wpcom-bubble' ).removeClass( 'fadein' ) ).off( 'click.bubble' );
-
-					var action = 'ab_unsubscribe_from_blog';
-				} else {
-					li.addClass( 'subscribed' ).removeClass( 'unfollow' );
-					link.html( "Following" );
-
-						var left = 131 - link.width();
-						li.append( $( 'div.wpcom-bubble' ).css( { left: '-' + left + 'px' } ) );
-						$( 'div.bubble-txt', 'div.wpcom-bubble' ).html( "New posts from this blog will now appear in <a target=\"_blank\" href=\"http:\/\/wordpress.com\/\">your reader<\/a>. You can manage email alerts from your <a target=\"_blank\" href=\"http:\/\/wordpress.com\/following\/edit\/\">subscriptions page<\/a>." );
-
-						$( 'div.wpcom-bubble.action-bubble' ).addClass( 'fadein' );
-
-						setTimeout( function() {
-							$('body').on( 'click.bubble touchstart.bubble', function(e) {
-								if ( !$(e.target).hasClass('wpcom-bubble') && !$(e.target).parents( 'div.wpcom-bubble' ).length )
-									hideBubble();
-							});
-							setTimeout( hideBubble, 15000 );
-						}, 500 );
-
-					var action = 'ab_subscribe_to_blog';
-					$('#wp-admin-bar-follow > a').bind( 'mouseout.shift', function() {
-						doFollowingHover();
-						$(this).unbind( '.shift' );
-					});
-				}
-
-				var nonce = link.attr( 'href' ).split( '_wpnonce=' );
-				nonce = nonce[1];
-
-				$.post( "https:\/\/jeff10.home.blog\/wp-admin\/admin-ajax.php", {
-					'action': action,
-					'_wpnonce': nonce,
-					'source': 'admin_bar',
-					'blog_id': 165743166				});
-			});
-		});
-	/* ]]> */
-	</script>
-<script type='text/javascript' src='//0.gravatar.com/js/gprofiles.js?ver=201934y'></script>
+<div id="wpadminbar" class="marketing-bar"><div class="marketing-bar-text">Create your website at WordPress.com</div><a class="marketing-bar-button" href="https://wordpress.com/?ref=marketing_bar">Get started</a></div><script type='text/javascript' src='//0.gravatar.com/js/gprofiles.js?ver=201934y'></script>
 <script type='text/javascript'>
 /* <![CDATA[ */
-var WPGroHo = {"my_hash":"973c7e3f66e51445fa9eda5da4179329"};
+var WPGroHo = {"my_hash":""};
 /* ]]> */
 </script>
 <script type='text/javascript' src='https://s1.wp.com/wp-content/mu-plugins/gravatar-hovercards/wpgroho.js?m=1380573781h'></script>
@@ -405,33 +391,32 @@ var WPGroHo = {"my_hash":"973c7e3f66e51445fa9eda5da4179329"};
 
 		<div style="display:none">
 	</div>
-<div id="report-form-window" style="display:none;"></div><link rel='stylesheet' id='screen-css-0-2' href='https://s2.wp.com/wp-content/blog-plugins/launch-banner/style.css?m=1552400413h&cssminify=yes' type='text/css' media='screen' />
-<script type='text/javascript'>
-/* <![CDATA[ */
-var thickboxL10n = {"next":"Next >","prev":"< Prev","image":"Image","of":"of","close":"Close","noiframes":"This feature requires inline frames. You have iframes disabled or your browser does not support them.","loadingAnimation":"https:\/\/s2.wp.com\/wp-includes\/js\/thickbox\/loadingAnimation.gif"};
-/* ]]> */
-</script>
-<script type='text/javascript'>
+<div class="widget widget_eu_cookie_law_widget"><div
+	class="hide-on-button ads-active"
+	data-hide-timeout="30"
+	data-consent-expiration="180"
+	id="eu-cookie-law"
+>
+	<form method="post">
+		<input type="submit" value="Close and accept" class="accept" />
+
+		Privacy &amp; Cookies: This site uses cookies. By continuing to use this website, you agree to their use. <br />
+To find out more, including how to control cookies, see here:
+		<a href="https://automattic.com/cookies" >
+			Cookie Policy		</a>
+ </form>
+</div>
+</div><script type='text/javascript'>
 /* <![CDATA[ */
 var comment_like_text = {"loading":"Loading..."};
 /* ]]> */
 </script>
 <script type='text/javascript'>
 /* <![CDATA[ */
-var wpNotesArgs = {"cacheBuster":"@automattic\/jetpack-blocks@13.1.0-1381-gbdb1572270","iframeUrl":"https:\/\/widgets.wp.com\/notifications\/","iframeAppend":"2","iframeScroll":"no","wide":"1"};
+var actionbardata = {"siteID":"165743166","siteName":"ascgfvhjnklb","siteURL":"https:\/\/jeff10.home.blog","icon":"<img alt='' src='https:\/\/s2.wp.com\/i\/logo\/wpcom-gray-white.png' class='avatar avatar-50' height='50' width='50' \/>","canManageOptions":"","canCustomizeSite":"","isFollowing":"","themeSlug":"pub\/calm-business","signupURL":"https:\/\/wordpress.com\/start\/","loginURL":"https:\/\/wordpress.com\/log-in?redirect_to=https%3A%2F%2Fjeff10.home.blog%2F&signup_flow=account&domain=jeff10.home.blog","themeURL":"https:\/\/wordpress.com\/theme\/calm-business\/","xhrURL":"https:\/\/jeff10.home.blog\/wp-admin\/admin-ajax.php","nonce":"9ae514c917","isSingular":"1","isFolded":"","isLoggedIn":"","isMobile":"","subscribeNonce":"<input type=\"hidden\" id=\"_wpnonce\" name=\"_wpnonce\" value=\"68aabf0bb0\" \/>","referer":"https:\/\/jeff10.home.blog\/","canFollow":"1","feedID":"99297515","statusMessage":"","customizeLink":"https:\/\/jeff10home.wordpress.com\/wp-admin\/customize.php?url=https%3A%2F%2Fjeff10home.wordpress.com%2F","postID":"4","shortlink":"https:\/\/wp.me\/PbdrmS-4","canEditPost":"","editLink":"https:\/\/wordpress.com\/page\/jeff10.home.blog\/4","statsLink":"https:\/\/wordpress.com\/stats\/post\/4\/jeff10.home.blog","i18n":{"view":"View site","follow":"Follow","following":"Following","edit":"Edit","login":"Log in","signup":"Sign up","customize":"Customize","report":"Report this content","themeInfo":"Get theme: Calm Business","shortlink":"Copy shortlink","copied":"Copied","followedText":"New posts from this site will now appear in your <a href=\"https:\/\/wordpress.com\/\">Reader<\/a>","foldBar":"Collapse this bar","unfoldBar":"Expand this bar","editSubs":"Manage subscriptions","viewReader":"View site in Reader","viewReadPost":"View post in Reader","subscribe":"Sign me up","enterEmail":"Enter your email address","followers":"","alreadyUser":"Already have a WordPress.com account? <a href=\"https:\/\/wordpress.com\/log-in?redirect_to=https%3A%2F%2Fjeff10.home.blog%2F&signup_flow=account&domain=jeff10.home.blog\">Log in now.<\/a>","stats":"Stats"}};
 /* ]]> */
 </script>
-<script type='text/javascript'>
-/* <![CDATA[ */
-var wpcom_tos_report_form = {"ajaxurl":"\/wp-admin\/admin-ajax.php","isLoggedoutUser":"","post_ID":"4","current_url":"https:\/\/jeff10.home.blog","report_this_content":"Report this content"};
-/* ]]> */
-</script>
-<script type='text/javascript'>
-/* <![CDATA[ */
-var actionbardata = {"siteID":"165743166","siteName":"ascgfvhjnklb","siteURL":"https:\/\/jeff10.home.blog","icon":"<img alt='' src='https:\/\/s2.wp.com\/i\/logo\/wpcom-gray-white.png' class='avatar avatar-50' height='50' width='50' \/>","canManageOptions":"1","canCustomizeSite":"1","isFollowing":"","themeSlug":"pub\/calm-business","signupURL":"https:\/\/wordpress.com\/start\/","loginURL":"https:\/\/wordpress.com\/log-in?redirect_to=https%3A%2F%2Fjeff10.home.blog%2F&signup_flow=account&domain=jeff10.home.blog","themeURL":"https:\/\/wordpress.com\/theme\/calm-business\/","xhrURL":"https:\/\/jeff10.home.blog\/wp-admin\/admin-ajax.php","nonce":"9fab3b02ee","isSingular":"1","isFolded":"","isLoggedIn":"1","isMobile":"","subscribeNonce":"<input type=\"hidden\" id=\"_wpnonce\" name=\"_wpnonce\" value=\"5e2d75ec70\" \/>","referer":"https:\/\/jeff10.home.blog\/","canFollow":"1","feedID":null,"statusMessage":"","customizeLink":"https:\/\/jeff10home.wordpress.com\/wp-admin\/customize.php?url=https%3A%2F%2Fjeff10home.wordpress.com%2F","postID":"4","shortlink":"https:\/\/wp.me\/PbdrmS-4","canEditPost":"1","editLink":"https:\/\/wordpress.com\/page\/jeff10.home.blog\/4","statsLink":"https:\/\/wordpress.com\/stats\/post\/4\/jeff10.home.blog","i18n":{"view":"View site","follow":"Follow","following":"Following","edit":"Edit","login":"Log in","signup":"Sign up","customize":"Customize","report":"Report this content","themeInfo":"Get help setting up your theme","shortlink":"Copy shortlink","copied":"Copied","followedText":"New posts from this site will now appear in your <a href=\"https:\/\/wordpress.com\/\">Reader<\/a>","foldBar":"Collapse this bar","unfoldBar":"Expand this bar","editSubs":"Manage subscriptions","viewReader":"View site in Reader","viewReadPost":"View post in Reader","subscribe":"Sign me up","enterEmail":"Enter your email address","followers":"","alreadyUser":"Already have a WordPress.com account? <a href=\"https:\/\/wordpress.com\/log-in?redirect_to=https%3A%2F%2Fjeff10.home.blog%2F&signup_flow=account&domain=jeff10.home.blog\">Log in now.<\/a>","stats":"Stats"}};
-/* ]]> */
-</script>
-<script type='text/javascript' src='https://s0.wp.com/_static/??-eJyVUdFWwyAM/SEZZ7rZJ4/fQiGutJAghHafL+hZnTsV3QuE3HtDciOXIDQhA7IckzQwWw3hvBvTgyyQRe2ygVQxHqyeejqvwYV00fssgssni0k6OxXRe4YMg0LjIG5VVMZbFL2Ku3I3qq28gmvy4lv3u6bwfEmJr07G2lIv02ID3CP6kWgIF2tOwElCLihNFoRTi2TwwSmGm/yWFRkNxKQpwrUX14xeVdMRtrwqsM+JlR5a0yHVVj5PUQcjFPPjn/zV7DaZKYkIgSKLN4r+9v2v7XqVGGL9imaI0dbJ19ydFTgWv1orU5otYRWtUWG/+pf98dh1T4d99zx+AEVQKbI='></script>
+<script type='text/javascript' src='https://s2.wp.com/_static/??-eJyVjssKwjAQRX/IOBar6EL8ljQZ6qR5mUfj55siFHUR6O5y5p7LQPFMOJvQJlARJM4k0L/2Ku7g62Qy8zqPZCNomjDCM2PGB7dSY2iUhTOmIvaR1GIPEAt53CL9gIZYSI6YImCuVzcRMs0LJDRe84R/vLHDpSHLBh7A8Jgw1MTcjCGQrCsr27iQAhdT630uEjm7SGuq7bu5daf+euz68+Wg3vw5oZI='></script>
 	<script>
 	/(trident|msie)/i.test(navigator.userAgent)&&document.getElementById&&window.addEventListener&&window.addEventListener("hashchange",function(){var t,e=location.hash.substring(1);/^[A-z0-9_-]+$/.test(e)&&(t=document.getElementById(e))&&(/^(?:a|select|input|button|textarea)$/i.test(t.tagName)||(t.tabIndex=-1),t.focus())},!1);
 	</script>
@@ -456,117 +441,13 @@ try{
 <script type="text/javascript">
 _tkq = window._tkq || [];
 _stq = window._stq || [];
-_tkq.push(['identifyUser', 167509572, 'jeffereytennison']);
-_tkq.push(['storeContext', {'blog_id':'165743166','blog_tz':'0','user_lang':'en','blog_lang':'en'}]);
-_stq.push(['view', {'blog':'165743166','v':'wpcom','tz':'0','user':'1','priv':'1','user_id':'167509572','post':'4','subd':'jeff10home'}]);
-_stq.push(['extra', {'crypt':'UE40eW5QN0p8M2Y/RE1zNDZ8S252Wis9XUQyb3YrcUVIU2R0VH5TdUlSYmNEVlB+cFl5VFI2ekxdL2dfR3AxV1ZFZzFvdVo/MUU0WyxMUWgzfkd4R1ZNY0ZqbnZXazA/ZVItJjFdaT0mdElEcGp1cE1DQ25EdHl8WjZyZzJDOVZKY05ILjB6TzR0X3dES2oyZiw5ZkZWZU1YSHFFY2dsalFRRU5hRlY0JVhVJSZOJTdBX256dlVdRVg5bnpOLkMtNHNzX0pvWlJOfkl3QlMtbEVDUkc/JjJadDJFNXpuN25tTy9iLm9GPTcwP1FzYXhGdD9EWmZzRCZOUEl6SFtqJlV6bnZtV3Y3azg4dXJXTjltQVV1U2hkVGl8U09mMw=='}]);
+_tkq.push(['storeContext', {'blog_id':'165743166','blog_tz':'0','user_lang':'en','blog_lang':'en','user_id':'0'}]);
+_stq.push(['view', {'blog':'165743166','v':'wpcom','tz':'0','user_id':'0','post':'4','subd':'jeff10home'}]);
+_stq.push(['extra', {'crypt':'UE40eW5QN0p8M2Y/RE1mJVY3bm9aR3VCbS9mWm1pRyZuJS1LX1t5QmRXZzE3RC9rQWZHK1FjbDltdWdaMVFFZTcxUGVHLWR0WTJoWXNCbHVlaEJTa3RvdWImZV8/bjZPaTV1T0h5WnVrNkRHdGVDMXFuTmovNVhhJV83NXZfWCxpeGtZazNdcCtEV1cvM0NLaVl1X2ZwdDh8dl1fXzRaeTFRYmRtVSw0Xz92QVo2diVSTHZrYVFMZUZ0UkY0ZnF2M3g2fmNiJl1qWHJNTT9EQlNDZ0JuOHAzMmcxekI3R2Z0dmk2RkI4dHpNNHpfeHkyQWhBTCxSa2VlMiZDc0F3dFMva0c/OWQzJlRvcWs2b1R3LzNGbWJUMjl3'}]);
+_stq.push([ 'clickTrackerInit', '165743166', '4' ]);
 	</script>
 <noscript><img src="https://pixel.wp.com/b.gif?v=noscript" style="height:0px;width:0px;overflow:hidden" alt="" /></noscript>
-		<div id="wpadminbar" class="nojq nojs ltr">
-							<a class="screen-reader-shortcut" href="#wp-toolbar" tabindex="1">Skip to toolbar</a>
-						<div class="quicklinks" id="wp-toolbar" role="navigation" aria-label="Toolbar" tabindex="0">
-						<ul id="wp-admin-bar-root-default" class="ab-top-menu">
-			
-		<li id="wp-admin-bar-blog" class="my-sites mb-trackable"><a class="ab-item"  href="https://wordpress.com/stats/jeff10.home.blog">My Site</a>		</li>
-		<li id="wp-admin-bar-jumptotop-button-menu"><a class="ab-item"  href="#"><div id="jumptotop"><span class="noticon noticon-top"></span></div></a>		</li>
-		<li id="wp-admin-bar-newdash" class="mb-trackable"><a class="ab-item"  href="https://wordpress.com/">Reader</a>		</li>		</ul>
-			<ul id="wp-admin-bar-top-secondary" class="ab-top-secondary ab-top-menu">
-			
-		<li id="wp-admin-bar-notes" class="menupop">		<div class="ab-item ab-empty-item" ><span id="wpnt-notes-unread-count" class="wpnt-loading wpn-read"></span><span class="noticon noticon-bell"></span><span class="ab-text">Notifications</span></div><div id="wpnt-notes-panel2" style="display:none" lang="en" dir="ltr"><div class="wpnt-notes-panel-header"><span class="wpnt-notes-header"></span><span class="wpnt-notes-panel-link"></span></div></div>		</li>
-		<li id="wp-admin-bar-my-account" class="with-avatar mb-trackable"><a class="ab-item"  href="https://wordpress.com/me/"><img alt='' src='https://0.gravatar.com/avatar/973c7e3f66e51445fa9eda5da4179329?s=32&#038;d=mm&#038;r=G' class='avatar avatar-32' height='32' width='32' /><span class="ab-text">Me</span></a>		</li>
-		<li id="wp-admin-bar-ab-new-post" class="mb-trackable"><a class="ab-item"  href="https://wordpress.com/post/jeff10.home.blog"><span>Write</span></a>		</li>		</ul>
-				</div>
-							<a class="screen-reader-shortcut" href="https://jeff10home.wordpress.com/wp-login.php?action=logout&#038;_wpnonce=221e5970dd">Log Out</a>
-					</div>
-
-	
-<script type="text/javascript">
-/* <![CDATA[ */
-var clickDebugLink;
-
-jQuery(document).ready( function($) {
-	var single = false, w = 1000,
-		supe = false;
-
-	$(document.body).load(function(){ $('#wpadminbar img.grav-hashed').removeClass('grav-hashed'); }); // hack to hide the gravatar hovercard
-
-	if ( single && supe )
-		w = 1385;
-	else if ( supe )
-		w = 1200;
-
-	// debug bar extra
-	clickDebugLink = function( parent_id, obj ) {
-
-		$('#'+parent_id).children('div').hide();
-
-		document.getElementById( obj.href.substr( obj.href.indexOf( '#' ) + 1 ) ).style.display = 'block';
-		$( obj.href.substr( obj.href.indexOf( '#' ) ) ).show()
-
-		$(obj).parent().addClass('current').siblings('li').removeClass('current');
-
-		return false;
-	};
-
-	$( '#wpadminbar #wp-admin-bar-shortlink' ).click( function() {
-		$( '#adminbar-shortlink-input' ).select();
-	});
-
-	// skip tap-to-hover on site switcher for mobile
-	if ( 'ontouchstart' in window ) {
-		$('#wp-admin-bar-switch-site').on( 'touchstart', function( event ) {
-			if ( $( window ).width() > 782 ) {
-				return;
-			}
-			event.stopPropagation();
-			$( event.target ).first( 'a' ).click();
-		});
-	}
-
-});
-/* ]]> */
-</script>
-	<div class="wpcom-bubble action-bubble">
-		<div class="bubble-txt"></div>
-	</div>
-	<script type="text/javascript">function hideBubble() { jQuery('body').append( jQuery( 'div.wpcom-bubble' ).removeClass( 'fadein' ) ).off( 'click.bubble touchstart.bubble' ); jQuery(document).off( 'scroll.bubble' ); };</script>
-		<script type="text/javascript">
-	jQuery( '#wp-admin-bar-jumptotop-button-menu a' ).click( function( e ) {
-		e.preventDefault();
-		jQuery( 'html, body' ).animate( { scrollTop: 0 }, 'fast' );
-	} );
-	function hideShowTbJumpToTop() {
-		var total_width = 0;
-		// Calculate total width taken by items minus our button to see if it'll
-		// overlap with other toolbar menus.
-		jQuery( '#wp-admin-bar-root-default > li' ).each( function() {
-			var self = jQuery( this );
-			if ( 'wp-admin-bar-jumptotop-button-menu' != self.attr( 'id' ) )
-				total_width += self.width();
-		});
-		if ( jQuery( '#wp-admin-bar-jumptotop-button-menu' ).position()['left'] - total_width < 10 ) {
-			jQuery( '#jumptotop' ).animate( { 'top': '-50px' }, 'fast' );
-		} else if (  jQuery( window ).scrollTop() >= 350 && parseInt( jQuery( '#jumptotop' ).css( 'top' ) ) < 0 ) {
-			if ( jQuery( '#wp-admin-bar-jumptotop-button-menu' ).position()['left'] - total_width < 10 )
-			   return;
-			jQuery( '#jumptotop' ).animate( { 'top': 0 }, 'fast' );
-		} else if (  jQuery( window ).scrollTop() < 1 && parseInt( jQuery( '#jumptotop' ).css( 'top' ) ) >= 0 ) {
-			jQuery( '#jumptotop' ).animate( { 'top': '-50px' }, 'fast' );
-		}
-	}
-	// handle on page load if auto scrolling to a position
-	hideShowTbJumpToTop();
-	// bind to scrolll event
-	var jumpToTopTimer = null;
-	jQuery( window ).scroll( function() {
-		clearTimeout( jumpToTopTimer );
-		jumpToTopTimer = setTimeout( jumpToTopRefresh, 150 );
-	} );
-	var jumpToTopRefresh = function() {
-		hideShowTbJumpToTop();
-	};
-	</script>
-	<script>
+<script>
 if ( 'object' === typeof wpcom_mobile_user_agent_info ) {
 
 	wpcom_mobile_user_agent_info.init();
@@ -589,3 +470,8 @@ if ( 'object' === typeof wpcom_mobile_user_agent_info ) {
 </script>
 </body>
 </html>
+<!--
+	generated in 0.087 seconds
+	26651 bytes batcached for 300 seconds
+-->
+
